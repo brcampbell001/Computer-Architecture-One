@@ -50,5 +50,3 @@ let cpu = new CPU(ram);
 // TODO: get name of ls8 file to load from command line
 
 loadMemory(cpu);
-
-cpu.startClock();
