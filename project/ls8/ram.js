@@ -11,8 +11,9 @@ class RAM {
      * Write (store) MDR value at address MAR
      */
     write(MAR, MDR) {
+        // write the value in the MDR to the address MAR
         this.mem[MAR] = MDR;
-        // return this.access(MAR, MDR, 'write');
+        return MDR;
     }
 
     /**
@@ -21,20 +22,10 @@ class RAM {
      * @returns MDR
      */
     read(MAR) {
-        // !!! IMPLEMENT ME
         // Read the value in address MAR and return it
-        return this.mem
+        let MDR = this.mem[MAR];
+        return MDR;
     }
-
-    //     access(MAR, MDR, action) {
-    //         if (action === 'write') {
-    //             this.mem[MAR] = MDR;
-    //         }
-    //         if (action === 'read') {
-    //             MDR = this.mem[MAR];
-    //         }
-    //         return MDR;
-    //     };
-};
+}
 
 module.exports = RAM;
