@@ -1,6 +1,11 @@
+const fs = require('fs');
+
 /**
  * LS-8 v2.0 emulator skeleton code
  */
+const IM = 0x05;
+const IS = 0x06;
+const SP = 0x07;
 
 const HLT = 0b00000001;
 const LDI = 0b10011001;
@@ -12,6 +17,15 @@ const PUSH = 0b01001101;
 
 const CALL = 0b01001000;
 const RET = 0b00001001;
+
+const CMP = 0b10100000;
+
+/**** FLAGS *****/
+
+const FL_EQ = 0;
+const FL_GT = 1;
+const FL_LT = 2;
+
 /**
  * Class for simulating a simple Computer (CPU & memory)
  */
@@ -52,6 +66,20 @@ class CPU {
     clearInterval(this.clock);
   }
 
+  setFlag(flag, value) {
+    value = +value;
+
+    if (value) {
+      this.reg.FL |= (1 << flag);
+    } else {
+      this.reg.FL &= (~(1 << flag));
+    }
+  }
+
+  getFlag(flag) {
+    return (this.reg.FL & (1 << flag)) >> flag;
+  }
+
   alu(op, regA, regB) {
     let varA = this.reg[regA];
     let varB = this.reg[regB];
@@ -64,6 +92,11 @@ class CPU {
         break;
       case 'DEC':
         this.reg[regA] = (this.reg[regA] - 1) & 255;
+        break;
+      case 'CMP':
+        this.setFlag(FL_EQ, this.reg[regA] === this.reg[regB]);
+        this.setFlag(FL_GT, this.reg[regA] > this.reg[regB]);
+        this.setFlag(FL_LT, this.reg[regA] < this.reg[regB]);
         break;
     }
   }
@@ -146,6 +179,9 @@ class CPU {
     return value
   }
 
+  CMP(regA, regB) {
+    this.alu('CMP', regA, regB);
+  }
 }
 
 setupBranchTable = () => {
@@ -166,6 +202,8 @@ setupBranchTable = () => {
 
   bt[CALL] = this.CALL;
   bt[RET] = this.RET;
+
+  bt[CMP] = this.CMP;
 
   this.branchTable = bt;
 }
