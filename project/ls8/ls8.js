@@ -3,50 +3,78 @@ const CPU = require('./cpu');
 const fs = require('fs');
 
 /**
- * Load an LS8 program into memory
- *
- * TODO: load this from a file on disk instead of having it hardcoded
- */
-function loadMemory(cpu) {
-  let program = [];
-  if (process.argv.length === 3) {
-    const lineReader = require('readline').createInterface({
-      input: fs.createReadStream(process.argv[2])
-    });
+  * Process a loaded file
+  */
+function processFile(content, cpu, onComplete) {
+  let curAddr = 0;
 
-    lineReader.on('line', function(line) {
-      let str = line.split('#')[0].slice(0, 8);
+  const lines = content.split('\n');
 
-      if (str.length > 1) {
-        program.push(str);
-      } else {
-        return;
-      }
-    });
+  for (let line of lines) {
 
-    lineReader.on('close', function() {
-      processProgram(program, cpu);
-    });
-  } else {
-    console.log('Error: did you include a file name');
+    if (line.includes('#'))
+      line = line.replace(/#.+/gi, '');
+
+    line.trim();
+
+    if (line === '')
+      continue;
+
+    const value = parseInt(line, 2);
+
+    cpu.poke(curAddr, value);
+
+    curAddr++;
   }
+
+  onComplete(cpu);
 }
 
-//
-function processProgram(arr, cpu) {
-  for (let i = 0; i < arr.length; i++) {
-    cpu.poke(i, parseInt(arr[i], 2));
-  }
+/**
+* Load the instructions into the CPU from stdin
+*/
+function loadFileFromStdin(cpu, onComplete) {
+  let content = '';
+
+  // Read everything from standard input, stolen from:
+  // https://stackoverflow.com/questions/13410960/how-to-read-an-entire-text-stream-in-node-js
+  process.stdin.resume();
+  process.stdin.on('data', function (buf) { content += buf.toString(); });
+  process.stdin.on('end', () => { processFile(content, cpu, onComplete); });
+}
+
+/**
+* Load the instructions into the CPU from a file
+*/
+function loadFile(filename, cpu, onComplete) {
+  const content = fs.readFileSync(filename, 'utf-8');
+  processFile(content, cpu, onComplete);
+}
+
+/**
+* On File Loaded
+* 
+* CPU is set up, start it running
+*/
+function onFileLoaded(cpu) {
   cpu.startClock();
 }
 
 /**
- * Main
- */
+* Main
+*/
 
 let ram = new RAM(256);
 let cpu = new CPU(ram);
 
-// TODO: get name of ls8 file to load from command line
+// Get remaining command line arguments
+const argv = process.argv.slice(2);
 
-loadMemory(cpu);
+if (argv.length === 0) {
+  loadFileFromStdin(cpu, onFileLoaded);
+} else if (argv.length == 1) {
+  loadFile(argv[0], cpu, onFileLoaded);
+} else {
+  console.error('usage: ls8 [machinecodefile]');
+  process.exit(1);
+}

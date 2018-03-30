@@ -7,6 +7,11 @@ const LDI = 0b10011001;
 const PRN = 0b01000011;
 const MUL = 0b10101010;
 
+const POP = 0b01001100;
+const PUSH = 0b01001101;
+
+const CALL = 0b01001000;
+const RET = 0b00001001;
 /**
  * Class for simulating a simple Computer (CPU & memory)
  */
@@ -21,49 +26,44 @@ class CPU {
 
     // Special-purpose registers
     this.reg.PC = 0; // Program Counter
+    this.reg.IR = 0; // Instruction Register
+    this.reg.FL = 0; // Flags
+
+    this.reg[IM] = 0;
+    this.reg[IS] = 0;
+    this.reg[SP] = 0xF4;
+
+    this.setupBranchTable();
   }
 
-  /**
-   * Store value in memory address, useful for program loading
-   */
   poke(address, value) {
     this.ram.write(address, value);
   }
 
-  /**
-   * Starts the clock ticking on the CPU
-   */
   startClock() {
     const _this = this;
 
     this.clock = setInterval(() => {
       _this.tick();
-    }, 1); // 1 ms delay == 1 KHz clock == 0.000001 GHz
+    }, 1);
   }
 
-  /**
-   * Stops the clock
-   */
   stopClock() {
     clearInterval(this.clock);
   }
 
-  /**
-   * ALU functionality
-   *
-   * The ALU is responsible for math and comparisons.
-   *
-   * If you have an instruction that does math, i.e. MUL, the CPU would hand
-   * it off to it's internal ALU component to do the actual work.
-   *
-   * op can be: ADD SUB MUL DIV INC DEC CMP
-   */
   alu(op, regA, regB) {
     let varA = this.reg[regA];
     let varB = this.reg[regB];
     switch (op) {
       case 'MUL':
-        this.reg[regA] = varA * varB;
+        this.reg[regA] = (this.reg[regA] * this.reg[regB]) & 255;
+        break;
+      case 'INC':
+        this.reg[regA] = (this.reg[regA] + 1) & 255;
+        break;
+      case 'DEC':
+        this.reg[regA] = (this.reg[regA] - 1) & 255;
         break;
     }
   }
@@ -72,61 +72,108 @@ class CPU {
    * Advances the CPU one cycle
    */
   tick() {
-    // Load the instruction register (IR--can just be a local variable here)
-    // from the memory address pointed to by the PC. (I.e. the PC holds the
-    // index into memory of the next instruction.)
     let IR = this.ram.read(this.reg.PC);
 
-    // Debugging output
-    //console.log(`${this.reg.PC}: ${IR.toString(2)}`);
+    const handler = this.branchTable[this.reg.IR];
 
-    // Get the two bytes in memory _after_ the PC in case the instruction
-    // needs them.
+    if (handler === undefined) {
+      console.log(`Instruction ${this.reg.IR} is not valid`);
+      this.stopClock();
+      return;
+    }
 
     let operandA = this.ram.read(this.reg.PC + 1);
     let operandB = this.ram.read(this.reg.PC + 2);
 
-    const handle_HLT = () => {
-      this.stopClock();
-    };
+    const newPC = handler.call(this, operandA, operandB);
 
-    const handle_LDI = (operandA, operandB) => {
-      this.reg[operandA] = operandB;
-    };
-
-    const handle_PRN = operandA => {
-      console.log(this.reg[operandA]);
-    };
-
-    const handle_MUL = (operandA, operandB) => {
-      this.alu('MUL', operandA, operandB);
-    };
-
-    const handle_ERROR = IR => {
-      console.log('Unknown instruction: ' + IR.toString(2));
-      this.stopClock();
-    };
-
-    const branchTable = {
-      [LDI]: handle_LDI,
-      [HLT]: handle_HLT,
-      [PRN]: handle_PRN,
-      [MUL]: handle_MUL
-    };
-
-    if (Object.keys(branchTable).includes(IR.toString())) {
-      branchTable[IR](operandA, operandB);
-    } else {
-      handle_ERROR(IR);
-    }
-
-    // Increment the PC register to go to the next instruction. Instructions
-    // can be 1, 2, or 3 bytes long. Hint: the high 2 bits of the
-    // instruction byte tells you how many bytes follow the instruction byte
-    // for any particular instruction.
-
-    this.reg.PC += (IR >>> 6) + 1;
+    const count = (this.reg.IR >> 6) & 0b00000011;
+    this.reg.PC += (count + 1);
   }
+
+  HLT() {
+    this.stopClock();
+  }
+
+  LDI(reg, value) {
+    this.reg[reg] = value;
+  }
+
+  PRN(reg) {
+    const value = this.reg[reg];
+    console.log(value);
+  }
+
+  MUL(regA, regB) {
+    this.alu('MUL', regA, regB);
+  }
+
+  INC(reg) {
+    this.alu('INC', reg);
+  }
+
+  DEC(reg) {
+    this.alu('DEC', reg);
+  }
+
+  _push(value) {
+    this.alu('DEC', SP);
+    this.ram.write(this.reg[SP], value);
+  }
+
+  PUSH(reg) {
+    this._push(this.reg[reg]);
+  }
+
+  _pop() {
+    const value = this.ram.read(this.reg[SP]);
+    this.alu('INC', SP);
+    return value;
+  }
+
+  POP(reg) {
+    this.reg[reg] = this._pop();
+  }
+
+  CALL(reg) {
+    this._push(this.reg.PC + 2);
+    const addr = this.reg[reg];
+    return addr;
+  }
+
+  RET() {
+    const value = this._pop();
+    return value
+  }
+
+}
+
+setupBranchTable = () => {
+  let bt = {};
+
+  bt[HLT] = this.HLT;
+
+  bt[LDI] = this.LDI;
+  bt[PRN] = this.PRN;
+
+  bt[MUL] = this.MUL;
+
+  bt[INC] = this.INC;
+  bt[DEC] = this.DEC;
+
+  bt[PUSH] = this.PUSH;
+  bt[POP] = this.POP;
+
+  bt[CALL] = this.CALL;
+  bt[RET] = this.RET;
+
+  this.branchTable = bt;
+}
+
+if (Object.keys(branchTable).includes(IR.toString())) {
+  branchTable[IR](operandA, operandB);
+} else {
+  handle_ERROR(IR);
 }
 
 module.exports = CPU;
